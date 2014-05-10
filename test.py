@@ -69,11 +69,11 @@ def purge_caf_additions(strings_base, strings_cm):
     for s in list_cm_string_array :
         name = s.attributes['name'].value
         if name not in names_base_string_array:
-            content = re.sub(r'(<string name=\"' + name + '.*</string>)', r'', content)
+            content = re.sub(r'(<string-array name=\"' + name + '.*</string-array>)', r'', content)
             print name
             xml_cm.documentElement.removeChild(s)
     for s in list_cm_plurals :
-        content = re.sub(r'(<string name=\"' + name + '.*</string>)', r'', content)
+        content = re.sub(r'(<plurals name=\"' + name + '.*</plurals>)', r'', content)
         name = s.attributes['name'].value
         if name not in names_base_plurals:
             print name
