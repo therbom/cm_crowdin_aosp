@@ -43,8 +43,9 @@ def purge_caf_additions(strings_base, strings_cm):
     list_cm_string_array = xml_cm.getElementsByTagName('string-array')
     list_cm_plurals = xml_cm.getElementsByTagName('plurals')
     with codecs.open(strings_cm, 'r', 'utf-8') as f:
-        content = f.read()
-    file_this = codecs.open('test.xml', 'w', 'utf-8')
+        content = [line.rstrip() for line in f]
+    shutil.copyfile(strings_cm, strings_cm + '.backup')
+    file_this = codecs.open(strings_cm, 'w', 'utf-8')
 
     # All names from AOSP
     names_base_string = []
@@ -60,60 +61,114 @@ def purge_caf_additions(strings_base, strings_cm):
         names_base_plurals.append(s.attributes['name'].value)
 
     # Get all names from CM
+    content2 = []
     for s in list_cm_string :
         name = s.attributes['name'].value
         if name not in names_base_string:
-            content = re.sub(r'(<string name=\"' + name + '.*</string>)', r'', content)
-            print name
-            xml_cm.documentElement.removeChild(s)
+            true = 0
+            content2 = []
+            for i in content:
+                if true == 0:
+                    test = re.search('(<string name=\"' + name + ')', i)
+                    if test is not None:
+                        test2 = re.search('(</string>)', i)
+                        if test2:
+                            true = 2
+                        else:
+                            true = 1
+                        i = ''
+                elif true == 1:
+                    test2 = re.search('(</string>)', i)
+                    if test2 is not None:
+                        true = 2
+                    i = ''
+                elif true == 2:
+                    print name
+                    true = 3
+                content2.append(i)
+            content = content2
     for s in list_cm_string_array :
         name = s.attributes['name'].value
         if name not in names_base_string_array:
-            content = re.sub(r'(<string-array name=\"' + name + '.*</string-array>)', r'', content)
-            print name
-            xml_cm.documentElement.removeChild(s)
+            true = 0
+            content2 = []
+            for i in content:
+                if true == 0:
+                    test = re.search('(<string-array name=\"' + name + ')', i)
+                    if test is not None:
+                        test2 = re.search('(</string-array>)', i)
+                        if test2:
+                            true = 2
+                        else:
+                            true = 1
+                        i = ''
+                elif true == 1:
+                    test2 = re.search('(</string-array>)', i)
+                    if test2 is not None:
+                        true = 2
+                    i = ''
+                elif true == 2:
+                    print name
+                    true = 3
+                content2.append(i)
+            content = content2
     for s in list_cm_plurals :
-        content = re.sub(r'(<plurals name=\"' + name + '.*</plurals>)', r'', content)
         name = s.attributes['name'].value
         if name not in names_base_plurals:
-            print name
-            xml_cm.documentElement.removeChild(s)
+            true = 0
+            content2 = []
+            for i in content:
+                if true == 0:
+                    test = re.search('(<plurals name=\"' + name + ')', i)
+                    if test is not None:
+                        test2 = re.search('(</plurals>)', i)
+                        if test2:
+                            true = 2
+                        else:
+                            true = 1
+                        i = ''
+                elif true == 1:
+                    test2 = re.search('(</plurals>)', i)
+                    if test2 is not None:
+                        true = 2
+                    i = ''
+                elif true == 2:
+                    # The actual purging is done!
+                    print name
+                    true = 3
+                content2.append(i)
+            content = content2
 
-    file_this.seek(0)
-    file_this.truncate()
-    file_this.write(content)
+    for addition in content:
+        file_this.write(addition + '\n')
     file_this.close()
 
-purge_caf_additions('strings_base.xml', 'strings_cm.xml')
+# Load caf.xml
+print('Loading caf.xml')
+xml = minidom.parse('caf.xml')
+items = xml.getElementsByTagName('item')
 
+# Store all created cm_caf.xml files in here.
+# Easier to remove them afterwards, as they cannot be committed
+cm_caf = []
 
-
-
-print('Welcome to the CM Crowdin sync script!')
-
-print('\nSTEP 0: Checking dependencies')
-# Check for Ruby version of crowdin-cli
-if subprocess.check_output(['rvm', 'all', 'do', 'gem', 'list', 'crowdin-cli', '-i']) == 'true':
-    sys.exit('You have not installed crowdin-cli. Terminating.')
-else:
-    print('Found: crowdin-cli')
-# Check for caf.xml
-if not os.path.isfile('caf.xml'):
-    sys.exit('You have no caf.xml. Terminating.')
-else:
-    print('Found: caf.xml')
-# Check for android/default.xml
-if not os.path.isfile('android/default.xml'):
-    sys.exit('You have no android/default.xml. Terminating.')
-else:
-    print('Found: android/default.xml')
-# Check for extra_packages.xml
-if not os.path.isfile('extra_packages.xml'):
-    sys.exit('You have no extra_packages.xml. Terminating.')
-else:
-    print('Found: extra_packages.xml')
-# Check for repo
-try:
-    subprocess.check_output(['which', 'repo'])
-except:
-    sys.exit('You have not installed repo. Terminating.')
+for item in items:
+    # Create tmp dir for download of AOSP base file
+    path_to_values = item.attributes["path"].value
+    subprocess.call(['mkdir', '-p', 'tmp/' + path_to_values])
+    for aosp_item in item.getElementsByTagName('aosp'):
+        url = aosp_item.firstChild.nodeValue
+        xml_file = aosp_item.attributes["file"].value
+        path_to_base = 'tmp/' + path_to_values + '/' + xml_file
+        path_to_cm = path_to_values + '/' + xml_file
+        urlretrieve(url, path_to_base)
+        purge_caf_additions(path_to_base, path_to_cm)
+        cm_caf.append(path_to_cm)
+        print('Purged ' + path_to_cm + ' from CAF additions')
+'''
+# Revert purges
+for purged_file in cm_caf:
+    os.remove(purged_file)
+    shutil.copyfile(purged_file + '.backup', purged_file)
+    print('Reverted purged file ' + purged_file)
+'''
