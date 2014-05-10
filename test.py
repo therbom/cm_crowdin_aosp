@@ -79,4 +79,8 @@ def get_caf_additions(strings_base, strings_cm):
                 print name
                 xml_cm.documentElement.removeChild(s)
 
+    file_handle = codecs.open("filename.xml","wb", "utf-8")
+    xml_cm.documentElement.writexml(file_handle)
+    file_handle.close()
+
 get_caf_additions('strings_base.xml', 'strings_cm.xml')
