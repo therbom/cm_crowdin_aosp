@@ -226,7 +226,7 @@ print(subprocess.check_output(['crowdin-cli', "download"]))
 print('\nSTEP 4A: Revert purges')
 for purged_file in cm_caf:
     os.remove(purged_file)
-    shutil.copyfile(purged_file + '.backup', purged_file)
+    shutil.move(purged_file + '.backup', purged_file)
     print('Reverted purged file ' + purged_file)
 
 print('\nSTEP 4B: Clean up of temp dir')
