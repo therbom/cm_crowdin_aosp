@@ -143,6 +143,55 @@ def purge_caf_additions(strings_base, strings_cm):
         file_this.write(addition + '\n')
     file_this.close()
 
+def push_as_commit(path, name, branch):
+    # CM gerrit nickname
+    username = 'your_nickname'
+
+    # Get path
+    path = os.getcwd() + '/' + path
+
+    # Create git commit
+    repo = git.Repo(path)
+    repo.git.add(path)
+    try:
+        repo.git.commit(m='Automatic translation import')
+        repo.git.push('ssh://' + username + '@review.cyanogenmod.org:29418/' + name, 'HEAD:refs/for/' + branch)
+        print 'Succesfully pushed commit for ' + name
+    except:
+        # If git commit fails, it's probably because of no changes.
+        # Just continue.
+        print 'No commit pushed (probably empty?) for ' + name
+
+print('Welcome to the CM Crowdin sync script!')
+
+print('\nSTEP 0: Checking dependencies')
+# Check for Ruby version of crowdin-cli
+if subprocess.check_output(['rvm', 'all', 'do', 'gem', 'list', 'crowdin-cli', '-i']) == 'true':
+    sys.exit('You have not installed crowdin-cli. Terminating.')
+else:
+    print('Found: crowdin-cli')
+# Check for caf.xml
+if not os.path.isfile('caf.xml'):
+    sys.exit('You have no caf.xml. Terminating.')
+else:
+    print('Found: caf.xml')
+# Check for android/default.xml
+if not os.path.isfile('android/default.xml'):
+    sys.exit('You have no android/default.xml. Terminating.')
+else:
+    print('Found: android/default.xml')
+# Check for extra_packages.xml
+if not os.path.isfile('extra_packages.xml'):
+    sys.exit('You have no extra_packages.xml. Terminating.')
+else:
+    print('Found: extra_packages.xml')
+# Check for repo
+try:
+    subprocess.check_output(['which', 'repo'])
+except:
+    sys.exit('You have not installed repo. Terminating.')
+
+print('\nSTEP 1: Removing CAF additions') 
 # Load caf.xml
 print('Loading caf.xml')
 xml = minidom.parse('caf.xml')
@@ -165,10 +214,67 @@ for item in items:
         purge_caf_additions(path_to_base, path_to_cm)
         cm_caf.append(path_to_cm)
         print('Purged ' + path_to_cm + ' from CAF additions')
-'''
-# Revert purges
+
+print('\nSTEP 2: Upload Crowdin source translations')
+# Execute 'crowdin-cli upload sources' and show output
+print(subprocess.check_output(['crowdin-cli', 'upload', 'sources']))
+
+print('\nSTEP 3: Download Crowdin translations')
+# Execute 'crowdin-cli download' and show output
+print(subprocess.check_output(['crowdin-cli', "download"]))
+
+print('\nSTEP 4A: Revert purges')
 for purged_file in cm_caf:
     os.remove(purged_file)
     shutil.copyfile(purged_file + '.backup', purged_file)
     print('Reverted purged file ' + purged_file)
-'''
+
+print('\nSTEP 4B: Clean up of temp dir')
+# We are done with cm_caf.xml files, so remove tmp/
+shutil.rmtree(os.getcwd() + '/tmp')
+
+print('\nSTEP 4C: Clean up of empty translations')
+# Some line of code that I found to find all XML files
+result = [os.path.join(dp, f) for dp, dn, filenames in os.walk(os.getcwd()) for f in filenames if os.path.splitext(f)[1] == '.xml']
+for xml_file in result:
+    # We hate empty, useless files. Crowdin exports them with <resources/> (sometimes with xliff).
+    # That means: easy to find
+    if '<resources/>' in open(xml_file).read():
+        print ('Removing ' + xml_file)
+        os.remove(xml_file)
+    elif '<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2"/>' in open(xml_file).read():
+        print ('Removing ' + xml_file)
+        os.remove(xml_file)    
+
+print('\nSTEP 5: Push translations to Git')
+# Get all files that Crowdin pushed
+proc = subprocess.Popen(['crowdin-cli', 'list', 'sources'],stdout=subprocess.PIPE)
+xml = minidom.parse('android/default.xml')
+xml_extra = minidom.parse('extra_packages.xml')
+items = xml.getElementsByTagName('project')
+items += xml_extra.getElementsByTagName('project')
+all_projects = []
+
+for path in iter(proc.stdout.readline,''):
+    # Remove the \n at the end of each line
+    path = path.rstrip()
+    # Get project root dir from Crowdin's output
+    m = re.search('/(.*Superuser)/Superuser.*|/(.*LatinIME).*|/(frameworks/base).*|/(.*CMFileManager).*|/(device/.*/.*)/.*/res/values.*|/(hardware/.*/.*)/.*/res/values.*|/(.*)/res/values.*', path)
+    for good_path in m.groups():
+        # When a project has multiple translatable files, Crowdin will give duplicates.
+        # We don't want that (useless empty commits), so we save each project in all_projects
+        # and check if it's already in there.
+        if good_path is not None and not good_path in all_projects:
+            all_projects.append(good_path)
+            for project_item in items:
+                # We need to have the Github repository for the git push url.
+                # Obtain them from android/default.xml or extra_packages.xml.
+                if project_item.attributes["path"].value == good_path:
+                    if project_item.hasAttribute('revision'):
+                        branch = project_item.attributes['revision'].value
+                    else:
+                        branch = 'cm-11.0'
+                    print 'Committing ' + project_item.attributes['name'].value + ' on branch ' + branch + ' (based on android/default.xml or extra_packages.xml)'
+                    push_as_commit(good_path, project_item.attributes['name'].value, branch)
+
+print('\nSTEP 6: Done!')
