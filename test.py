@@ -64,17 +64,19 @@ def get_caf_additions(strings_base, strings_cm):
         if not s.hasAttribute('translatable') and not s.hasAttribute('translate'):
             name = s.attributes['name'].value
             if name not in names_base_string:
-                print s
-                xml_cm.removeChild(s)
+                print name
+                xml_cm.documentElement.removeChild(s)
     for s in list_cm_string_array :
         if not s.hasAttribute('translatable') and not s.hasAttribute('translate'):
             name = s.attributes['name'].value
             if name not in names_base_string_array:
-                xml_cm.removeChild(s)
+                print name
+                xml_cm.documentElement.removeChild(s)
     for s in list_cm_plurals :
         if not s.hasAttribute('translatable') and not s.hasAttribute('translate'):
             name = s.attributes['name'].value
             if name not in names_base_plurals:
-                xml_cm.removeChild(s)
+                print name
+                xml_cm.documentElement.removeChild(s)
 
 get_caf_additions('strings_base.xml', 'strings_cm.xml')
